@@ -1,5 +1,6 @@
 import asyncio
 import json
+from math import isfinite
 import re
 import unicodedata
 
@@ -23,6 +24,13 @@ def _reject_json_constant(value: str) -> None:
     raise ValueError(f"invalid JSON constant: {value}")
 
 
+def _parse_finite_float(value: str) -> float:
+    number = float(value)
+    if not isfinite(number):
+        raise ValueError(f"invalid JSON number: {value}")
+    return number
+
+
 async def read_message(reader: asyncio.StreamReader) -> dict[str, object]:
     try:
         data = await reader.readline()
@@ -32,7 +40,9 @@ async def read_message(reader: asyncio.StreamReader) -> dict[str, object]:
         raise ValueError("invalid or oversized message")
     try:
         message = json.loads(
-            data[:-1].decode("utf-8"), parse_constant=_reject_json_constant
+            data[:-1].decode("utf-8"),
+            parse_constant=_reject_json_constant,
+            parse_float=_parse_finite_float,
         )
     except (UnicodeDecodeError, ValueError) as exc:
         raise ValueError("invalid JSON message") from exc

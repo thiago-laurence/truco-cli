@@ -48,6 +48,20 @@ class WireTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(ValueError):
                     await read_message(reader)
 
+    async def test_rejects_exponents_that_overflow_to_infinity(self):
+        for data in (b'{"x":1e999}\n', b'{"x":-1e999}\n'):
+            with self.subTest(data=data):
+                reader = asyncio.StreamReader()
+                reader.feed_data(data)
+                reader.feed_eof()
+                with self.assertRaises(ValueError):
+                    await read_message(reader)
+
+        reader = asyncio.StreamReader()
+        reader.feed_data(b'{"x":1.25}\n')
+        reader.feed_eof()
+        self.assertEqual(await read_message(reader), {"x": 1.25})
+
     async def test_refuses_to_write_non_finite_numbers(self):
         class Writer:
             def write(self, data):
