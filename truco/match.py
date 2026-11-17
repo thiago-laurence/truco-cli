@@ -26,6 +26,7 @@ class Match:
         self._reveal = None
         self._duel: tuple[str, ...] = seats
         self._hand: Hand | None = None
+        self._pica_cards: dict[str, tuple[Card, Card, Card]] | None = None
         self.mode = "redonda"
         if self.winner is None:
             self._set_mode()
@@ -41,25 +42,26 @@ class Match:
 
     def _deal(self) -> None:
         if self.mode == "pica":
-            i = self._duel_index
-            self._duel = (self.seats[i], self.seats[i + 3])
+            if self._pica_cards is None:
+                deck = self._deck_factory()
+                self._pica_cards = {
+                    seat: tuple(deck.pop() for _ in range(3))
+                    for seat in self.seats
+                }
+            mano = (self._dealer + 1 + self._duel_index) % len(self.seats)
+            self._duel = (self.seats[mano], self.seats[(mano + 3) % len(self.seats)])
             teams = {seat: self.seats.index(seat) % 2 for seat in self._duel}
-            dealer = next(
-                self._duel.index(self.seats[(self._dealer + offset) % len(self.seats)])
-                for offset in range(len(self.seats))
-                if self.seats[(self._dealer + offset) % len(self.seats)] in self._duel
-            )
+            dealer = 1
             order = self._duel
+            cards = {seat: self._pica_cards[seat] for seat in order}
         else:
             self._duel = self.seats
             teams = {seat: i % 2 for i, seat in enumerate(self.seats)}
             dealer = self._dealer
             order = self.seats
-        deck = self._deck_factory()
-        cards = {
-            seat: tuple(deck.pop() for _ in range(3))
-            for seat in order
-        }
+            deck = self._deck_factory()
+            cards = {seat: tuple(deck.pop() for _ in range(3)) for seat in order}
+            self._pica_cards = None
         self._hand = Hand(
             order,
             teams,
@@ -91,12 +93,14 @@ class Match:
             if reveal:
                 self._reveal = reveal
             if self.winner is None:
-                self._dealer = (self._dealer + 1) % len(self.seats)
                 if self.mode == "pica" and self._duel_index < 2:
                     self._duel_index += 1
+                    self._deal()
                 else:
+                    self._dealer = (self._dealer + 1) % len(self.seats)
+                    self._pica_cards = None
                     self._set_mode()
-                self._deal()
+                    self._deal()
         return awards
 
     def view(self, actor: str) -> dict[str, object]:
@@ -104,6 +108,9 @@ class Match:
             raise ValueError("unknown player")
         if self._hand is not None and actor in self._hand.seats:
             view = self._hand.snapshot_for(actor)
+        elif self.mode == "pica" and self._pica_cards is not None:
+            view = self._hand.snapshot_for(self._hand.seats[0])
+            view.update(actor=actor, cards=self._pica_cards[actor], legal=())
         else:
             view = {
                 "actor": actor,

@@ -35,7 +35,7 @@ class MatchTests(unittest.TestCase):
         seats = ("A", "B", "C", "D", "E", "F")
         match = Match(seats, initial_score=(5, 0))
         self.assertEqual(match.mode, "pica")
-        for expected in (("A", "D"), ("B", "E"), ("C", "F")):
+        for expected in (("B", "E"), ("C", "F"), ("D", "A")):
             view = match.view(expected[0])
             self.assertEqual(view["duel"], expected)
             paired_cards = (*view["cards"], *match.view(expected[1])["cards"])
@@ -48,6 +48,49 @@ class MatchTests(unittest.TestCase):
         self.assertEqual(match.view("A")["duel"], seats)
         self.assertEqual(Match(seats, initial_score=(25, 0)).mode, "redonda")
 
+    def test_pica_deals_one_shared_unique_deck_to_all_players(self):
+        deals = []
+
+        def deck_factory():
+            deals.append(fresh_deck())
+            return deals[-1]
+
+        match = Match(("A", "B", "C", "D", "E", "F"), deck_factory, (5, 0))
+        cards = [card for seat in match.seats for card in match.view(seat)["cards"]]
+        self.assertEqual(len(set(cards)), 18)
+        self.assertEqual(len(deals), 1)
+
+        for _ in range(3):
+            actor = match.view(match.seats[0])["turn"]
+            match.act(actor, "fold")
+        self.assertEqual(len(deals), 2)
+
+    def test_waiting_pica_player_sees_only_their_predealt_cards_without_actions(self):
+        match = Match(("A", "B", "C", "D", "E", "F"), deck_factory=fresh_deck, initial_score=(5, 0))
+        view = match.view("A")
+        self.assertEqual(len(view["cards"]), 3)
+        self.assertEqual(view["legal"], ())
+        self.assertEqual(view["duel"], ("B", "E"))
+        self.assertNotIn("E", view["cards"])
+
+    def test_pica_dealer_rotates_once_after_all_three_duels(self):
+        match = Match(("A", "B", "C", "D", "E", "F"), deck_factory=fresh_deck, initial_score=(5, 0))
+        for _ in range(3):
+            actor = match.view("A")["turn"]
+            match.act(actor, "fold")
+        self.assertEqual(match.view("A")["turn"], "C")
+
+    def test_pica_pair_order_follows_rotated_dealer(self):
+        match = Match(("A", "B", "C", "D", "E", "F"), deck_factory=fresh_deck, initial_score=(4, 4))
+        while match.mode == "redonda":
+            actor = match.view("A")["turn"]
+            if match.seats.index(actor) % 2 == 0:
+                match.act(actor, "fold")
+            else:
+                match.act(actor, "play", "a")
+        self.assertEqual(match.view("A")["duel"], ("C", "F"))
+        self.assertEqual(match.view("C")["turn"], "C")
+
     def test_first_duel_that_reaches_30_stops_remaining_duels(self):
         match = Match(
             ("A", "B", "C", "D", "E", "F"),
@@ -56,13 +99,13 @@ class MatchTests(unittest.TestCase):
         )
         self.assertEqual(match.mode, "pica")
         actor = match.view("A")["turn"]
-        other = "A" if actor == "D" else "D"
+        other = "E" if actor == "B" else "B"
         match.act(actor, "bet", "falta_envido")
         awards = match.act(other, "accept")
         self.assertEqual(awards, (Award(1, 6, "envido"),))
         self.assertEqual(match.score, (0, 30))
         self.assertEqual(match.winner, 1)
-        self.assertEqual(match.view("B")["duel"], ("A", "D"))
+        self.assertEqual(match.view("B")["duel"], ("B", "E"))
 
     def test_view_does_not_expose_opponents_cards(self):
         match = Match(("A", "B", "C", "D"))
