@@ -39,6 +39,30 @@ class WireTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await read_message(reader)
 
+    async def test_rejects_non_finite_json_constants(self):
+        for data in (b'{"x":NaN}\n', b'{"x":Infinity}\n'):
+            with self.subTest(data=data):
+                reader = asyncio.StreamReader()
+                reader.feed_data(data)
+                reader.feed_eof()
+                with self.assertRaises(ValueError):
+                    await read_message(reader)
+
+    async def test_refuses_to_write_non_finite_numbers(self):
+        class Writer:
+            def write(self, data):
+                self.data = data
+
+            async def drain(self):
+                pass
+
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value):
+                writer = Writer()
+                with self.assertRaises(ValueError):
+                    await write_message(writer, {"x": value})
+                self.assertFalse(hasattr(writer, "data"))
+
     async def test_rejects_messages_over_4096_bytes(self):
         reader = asyncio.StreamReader()
         reader.feed_data(b'{"text":"' + b"x" * 4090 + b'"}\n')
