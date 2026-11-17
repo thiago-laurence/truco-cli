@@ -121,6 +121,25 @@ class UiTests(unittest.IsolatedAsyncioTestCase):
             await pilot.click("#seat")
             self.assertEqual(sent[0], {"type": "seat", "names": ["A", "C", "B", "D"]})
 
+    async def test_seat_field_follows_players_joining_lobby(self):
+        sent = []
+
+        async def send(message):
+            sent.append(message)
+
+        app = TrucoApp(send, {
+            "phase": "lobby", "players": ["Ana"], "local_name": "Ana", "capacity": 2,
+        })
+        async with app.run_test() as pilot:
+            app.apply_event({
+                "type": "state",
+                "view": {"phase": "lobby", "players": ["Ana", "Luis"]},
+            })
+            await pilot.pause()
+            self.assertEqual(app.query_one("#seat-order", Input).value, "Ana, Luis")
+            await pilot.click("#seat")
+            self.assertEqual(sent, [{"type": "seat", "names": ["Ana", "Luis"]}])
+
     async def test_oversized_chat_input_is_capped_before_send(self):
         sent = []
 

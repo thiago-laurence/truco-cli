@@ -74,6 +74,7 @@ class TrucoApp(App[None]):
         super().__init__()
         self.send = send
         self.view = dict(initial_view)
+        self.roster: tuple = ()
         self.chat_mode = False
         self.menu: list[tuple[str, str, str | None]] = []
         self.history = [
@@ -96,7 +97,6 @@ class TrucoApp(App[None]):
     def on_mount(self) -> None:
         self.set_focus(None)
         self.query_one("#host-controls").display = self._is_host()
-        self.query_one("#seat-order", Input).value = ", ".join(self.view.get("players", ()))
         self._render()
         for line in self.history:
             self.query_one("#chat-history", RichLog).write(line)
@@ -121,7 +121,11 @@ class TrucoApp(App[None]):
         played = "  ".join(
             f"{item.get('player')}: {item.get('card')}" for item in table if isinstance(item, dict)
         ) or "—"
-        players = ", ".join(map(str, self.view.get("players", ())))
+        roster = tuple(self.view.get("players", ()))
+        if roster != self.roster:
+            self.roster = roster
+            self.query_one("#seat-order", Input).value = ", ".join(map(str, roster))
+        players = ", ".join(map(str, roster))
         seats = ", ".join(
             f"{name} (Equipo {index % 2 + 1})"
             for index, name in enumerate(self.view.get("seats", ()))
