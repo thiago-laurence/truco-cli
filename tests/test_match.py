@@ -6,6 +6,30 @@ from truco.match import Match
 
 
 class MatchTests(unittest.TestCase):
+    def test_face_up_card_survives_instant_next_hand_transition(self):
+        match = Match(("A", "B"), deck_factory=fresh_deck)
+        actor = match.view("A")["turn"]
+        other = "B" if actor == "A" else "A"
+        match.act(actor, "play", "a")
+        match.act(other, "fold")
+        view = match.view("A")
+        self.assertEqual(len(view["cards"]), 3)
+        self.assertEqual(view["played"][0]["player"], actor)
+
+    def test_pica_envido_cards_stay_hidden_until_all_duels_finish(self):
+        match = Match(("A", "B", "C", "D", "E", "F"), deck_factory=fresh_deck, initial_score=(5, 0))
+        actor = match.view("A")["turn"]
+        duel = match.view("A")["duel"]
+        other = duel[0] if actor == duel[1] else duel[1]
+        match.act(actor, "bet", "envido")
+        match.act(other, "accept")
+        match.act(actor, "fold")
+        self.assertIsNone(match.view("B")["reveal"])
+        for _ in range(2):
+            actor = match.view("A")["turn"]
+            match.act(actor, "fold")
+        self.assertIsNotNone(match.view("B")["reveal"])
+
     def test_each_deal_has_unique_private_cards_and_rotates_dealer(self):
         deals = []
 

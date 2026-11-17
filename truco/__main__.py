@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from truco.room import Room
 from truco.server import serve
 from truco.ui import TrucoApp
-from truco.wire import read_message, write_message
+from truco.wire import clean_text, read_message, write_message
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -53,6 +53,7 @@ async def _play(
     capacity: int | None = None,
     advertised_address: str | None = None,
 ) -> None:
+    name = clean_text(name, 32).strip()
     server = None
     if capacity is not None:
         server = await serve(Room(name, capacity), "0.0.0.0", port)
@@ -64,6 +65,7 @@ async def _play(
             print("No se detectó IP IPv4 LAN; indica --address manualmente.")
         if advertised_address:
             print(f"Dirección anunciada manualmente: {advertised_address}:{port}")
+    writer = None
     try:
         reader, writer = await asyncio.open_connection(address, port)
         await write_message(writer, {"type": "join", "name": name})
@@ -80,14 +82,21 @@ async def _play(
         )
 
         async def receive() -> None:
-            while True:
-                app.apply_event(await read_message(reader))
+            try:
+                while True:
+                    app.apply_event(await read_message(reader))
+            except (ConnectionError, ValueError, asyncio.IncompleteReadError) as exc:
+                app.apply_event({"type": "error", "text": f"Conexión cerrada: {exc}"})
 
         app.network_reader = receive
         await app.run_async()
-        writer.close()
-        await writer.wait_closed()
     finally:
+        if writer is not None:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except (ConnectionError, RuntimeError):
+                pass
         if server is not None:
             server.close()
             await server.wait_closed()

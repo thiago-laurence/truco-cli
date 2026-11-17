@@ -7,6 +7,12 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, RichLog, Static
 
+SIGNALS = {
+    1: "levantar cejas", 2: "guiñar ojo", 3: "boca a la derecha",
+    4: "boca a la izquierda", 5: "morder labio inferior", 6: "beso",
+    7: "abrir boca", 8: "fruncir nariz", 9: "cerrar ojos",
+}
+
 
 class ConfirmQuit(ModalScreen[bool]):
     BINDINGS = [Binding("escape", "cancel", "Cancelar")]
@@ -37,13 +43,15 @@ class TrucoApp(App[None]):
     Screen { layout: vertical; }
     #title { height: 1; text-style: bold; }
     #main { height: 1fr; min-height: 5; }
-    #board { width: 2fr; border: round $primary; padding: 0 1; }
-    #side { width: 1fr; min-width: 16; }
+    #table { width: 2fr; min-width: 12; border: round $primary; padding: 0 1; }
+    #side { width: 1fr; min-width: 10; }
     #chat-history { height: 1fr; border: round $secondary; padding: 0 1; }
     #help { height: auto; min-height: 2; }
     #chat-input { display: none; }
     #action-menu { height: auto; }
     #host-controls { height: auto; }
+    #seat-order { width: 1fr; min-width: 8; }
+    #host-controls Button { width: auto; }
     """
 
     BINDINGS = [
@@ -81,12 +89,14 @@ class TrucoApp(App[None]):
                 yield RichLog(id="chat-history", wrap=True, markup=False, highlight=False)
                 yield Static("", id="help", markup=False)
         yield Static("", id="action-menu", markup=False)
-        yield Horizontal(Button("Sentar jugadores", id="seat"), Button("Empezar", id="start"), id="host-controls")
+        yield Horizontal(Input(placeholder="Orden de asientos, separado por comas", id="seat-order"),
+                         Button("Sentar", id="seat"), Button("Empezar", id="start"), id="host-controls")
         yield Input(placeholder="Escribe en el chat y pulsa Enter", id="chat-input")
 
     def on_mount(self) -> None:
         self.set_focus(None)
         self.query_one("#host-controls").display = self._is_host()
+        self.query_one("#seat-order", Input).value = ", ".join(self.view.get("players", ()))
         self._render()
         for line in self.history:
             self.query_one("#chat-history", RichLog).write(line)
@@ -100,8 +110,10 @@ class TrucoApp(App[None]):
 
     def _render(self) -> None:
         cards = self.view.get("cards", ())
+        used_slots = set(self.view.get("used_slots", ()))
         hand = "  ".join(
-            f"{slot.upper()}: {getattr(card, 'rank', card.get('rank') if isinstance(card, dict) else '?')} "
+            f"{slot.upper()}{'✓' if slot in used_slots else ''}: "
+            f"{getattr(card, 'rank', card.get('rank') if isinstance(card, dict) else '?')} "
             f"{getattr(card, 'suit', card.get('suit') if isinstance(card, dict) else '')}"
             for slot, card in zip("asd", cards)
         )
@@ -110,6 +122,10 @@ class TrucoApp(App[None]):
             f"{item.get('player')}: {item.get('card')}" for item in table if isinstance(item, dict)
         ) or "—"
         players = ", ".join(map(str, self.view.get("players", ())))
+        seats = ", ".join(
+            f"{name} (Equipo {index % 2 + 1})"
+            for index, name in enumerate(self.view.get("seats", ()))
+        ) or "sin asignar"
         score = self.view.get("score", (0, 0))
         winner = self.view.get("winner")
         status = f"Ganó el equipo {int(winner) + 1}" if winner is not None else (
@@ -120,11 +136,16 @@ class TrucoApp(App[None]):
             f"TRUCO  |  {self.view.get('phase', 'lobby')} · {self.view.get('mode') or 'mesa'}"
         )
         self.query_one("#table", Static).update(
-            f"Jugadores: {players}\nPuntaje: {score}\nMesa: {played}\n"
-            f"Tu mano: {hand or '—'}\n{status}"
+            f"Jugadores: {players}\nAsientos: {seats}\nPuntaje: {score}\nMesa: {played}\n"
+            f"Tu mano: {hand or '—'}\n{status}\n"
+            f"Duelo: {' vs '.join(map(str, self.view.get('duel', ())))}\n"
+            f"Apuesta: {self.view.get('pending_bet') or '—'}\n"
+            f"Envido: {self.view.get('envido') or '—'} · Revelación: {self.view.get('reveal') or '—'}"
         )
         legal = set(self.view.get("legal", ()))
-        help_text = "a/s/d jugar · e envido · t truco · m mazo · 1–9 seña · c chat · q salir"
+        help_text = ("a/s/d jugar · e envido · t truco · m mazo · c chat · q salir\n"
+                     "1 cejas · 2 guiño · 3 boca der. · 4 boca izq. · 5 labio · "
+                     "6 beso · 7 boca · 8 nariz · 9 ojos")
         if self.chat_mode:
             help_text = "Chat: escribe y pulsa Enter (Esc cancela)"
         elif legal:
@@ -148,7 +169,8 @@ class TrucoApp(App[None]):
         elif kind in ("chat", "signal"):
             text = (
                 f"{event.get('sender', '?')}: {event.get('text')}"
-                if kind == "chat" else f"Seña de {event.get('sender', '?')}: {event.get('code')}"
+                if kind == "chat" else
+                f"Seña de {event.get('sender', '?')}: {SIGNALS.get(event.get('code'), 'desconocida')}"
             )
             self.history.append(text)
             if self.is_mounted:
@@ -258,9 +280,12 @@ class TrucoApp(App[None]):
             self.push_screen(ConfirmQuit(), lambda confirmed: self.exit() if confirmed else None)
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
-        message = event.value.strip()
+        message = event.value.strip()[:300]
         if message:
-            await self.send({"type": "chat", "text": message})
+            try:
+                await self.send({"type": "chat", "text": message})
+            except (ConnectionError, ValueError) as exc:
+                self.apply_event({"type": "error", "text": str(exc)})
         event.input.value = ""
         self.chat_mode = False
         event.input.display = False
@@ -269,6 +294,7 @@ class TrucoApp(App[None]):
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "seat":
-            await self.send({"type": "seat", "names": list(self.view.get("players", ()))})
+            names = [name.strip() for name in self.query_one("#seat-order", Input).value.split(",")]
+            await self.send({"type": "seat", "names": names})
         elif event.button.id == "start":
             await self.send({"type": "start"})

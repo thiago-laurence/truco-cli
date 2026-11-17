@@ -24,9 +24,11 @@ class Match:
         self._last_envido: tuple[Award, ...] = ()
         self._hand_envido: tuple[Award, ...] = ()
         self._reveal = None
+        self._pica_reveal = None
         self._duel: tuple[str, ...] = seats
         self._hand: Hand | None = None
         self._pica_cards: dict[str, tuple[Card, Card, Card]] | None = None
+        self._last_table: tuple[dict[str, object], ...] = ()
         self.mode = "redonda"
         if self.winner is None:
             self._set_mode()
@@ -81,17 +83,29 @@ class Match:
             self._hand_envido = envido_awards
         for award in awards:
             score = list(self.score)
-            score[award.team] += award.points
+            score[award.team] = min(30, score[award.team] + award.points)
             self.score = tuple(score)
             if max(self.score) >= 30:
                 self.winner = self.score.index(max(self.score))
                 break
         if self._hand.done:
+            self._last_table = tuple(
+                self._hand.snapshot_for(self._hand.seats[0])["played"]
+            )
             if self._hand_envido:
                 self._last_envido = self._hand_envido
             reveal = self._hand.snapshot_for(self._hand.seats[0])["envido_reveal"]
             if reveal:
-                self._reveal = reveal
+                if self.mode == "pica" and self._duel_index < 2 and self.winner is None:
+                    self._pica_reveal = reveal
+                else:
+                    self._reveal = reveal or self._pica_reveal
+                    self._pica_reveal = None
+            if self.mode == "pica" and self._pica_reveal and (
+                self._duel_index == 2 or self.winner is not None
+            ):
+                self._reveal = self._pica_reveal
+                self._pica_reveal = None
             if self.winner is None:
                 if self.mode == "pica" and self._duel_index < 2:
                     self._duel_index += 1
@@ -126,6 +140,7 @@ class Match:
             }
         return {
             **view,
+            "played": view.get("played") or self._last_table,
             "mode": self.mode,
             "duel": self._duel,
             "score": self.score,

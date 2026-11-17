@@ -29,15 +29,18 @@ async def serve(room: Room, host: str, port: int) -> asyncio.AbstractServer:
                 try:
                     await write_message(writer, _json_value(message))
                 except (ConnectionError, ValueError):
-                    pass
+                    writer.close()
+                    break
 
     async def send_states():
         views = room.views()
         for name, writer in tuple(writers.items()):
             try:
-                await write_message(writer, {"type": "state", "view": _json_value(views[name])})
+                view = dict(views[name])
+                view.pop("chat", None)
+                await write_message(writer, {"type": "state", "view": _json_value(view)})
             except (ConnectionError, ValueError):
-                pass
+                writer.close()
 
     async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         name = None
@@ -72,6 +75,8 @@ async def serve(room: Room, host: str, port: int) -> asyncio.AbstractServer:
                 name = requested
             writers[name] = writer
             await send_states()
+            for event in room.chat:
+                await write_message(writer, _json_value(event))
 
             while True:
                 try:

@@ -1,4 +1,5 @@
 import unittest
+import asyncio
 from contextlib import redirect_stdout
 import io
 from unittest.mock import AsyncMock, Mock, patch
@@ -10,6 +11,29 @@ from truco.ui import TrucoApp
 
 
 class UiTests(unittest.IsolatedAsyncioTestCase):
+    async def test_host_disconnect_is_visible_and_closes_client_writer(self):
+        writer = Mock()
+        writer.wait_closed = AsyncMock()
+        app = Mock()
+
+        async def run_app():
+            await app.network_reader()
+
+        app.run_async = AsyncMock(side_effect=run_app)
+        with (
+            patch("truco.__main__.asyncio.open_connection", new=AsyncMock(return_value=(object(), writer))),
+            patch("truco.__main__.write_message", new=AsyncMock()),
+            patch("truco.__main__.read_message", new=AsyncMock(side_effect=[
+                {"type": "state", "view": {"players": ["Ana"]}},
+                asyncio.IncompleteReadError(b"", 1),
+            ])),
+            patch("truco.__main__.TrucoApp", return_value=app),
+        ):
+            await _play("Ana", "127.0.0.1", 4977)
+        self.assertEqual(app.apply_event.call_args.args[0]["type"], "error")
+        writer.close.assert_called_once()
+        writer.wait_closed.assert_awaited_once()
+
     async def test_chat_mode_keeps_digits_as_text_and_retains_scrollable_history(self):
         sent = []
 
@@ -77,7 +101,69 @@ class UiTests(unittest.IsolatedAsyncioTestCase):
             await pilot.press("1")
             await pilot.pause()
             self.assertEqual(sent, [{"type": "signal", "code": 1}])
-            self.assertIn("1–9 seña", app.query_one("#help", Static).render().plain)
+            self.assertIn("1 cejas", app.query_one("#help", Static).render().plain)
+            self.assertIn("9 ojos", app.query_one("#help", Static).render().plain)
+            app.apply_event({"type": "signal", "sender": "Beto", "code": 1})
+            self.assertIn("levantar cejas", app.history[-1])
+
+    async def test_host_sends_explicit_alternating_seat_order(self):
+        sent = []
+
+        async def send(message):
+            sent.append(message)
+
+        app = TrucoApp(send, {
+            "phase": "lobby", "players": ["A", "B", "C", "D"],
+            "local_name": "A", "capacity": 4,
+        })
+        async with app.run_test() as pilot:
+            app.query_one("#seat-order", Input).value = "A, C, B, D"
+            await pilot.click("#seat")
+            self.assertEqual(sent[0], {"type": "seat", "names": ["A", "C", "B", "D"]})
+
+    async def test_oversized_chat_input_is_capped_before_send(self):
+        sent = []
+
+        async def send(message):
+            sent.append(message)
+
+        app = TrucoApp(send, {"phase": "lobby", "players": ["Ana"]})
+        async with app.run_test() as pilot:
+            await pilot.press("c")
+            app.query_one("#chat-input", Input).value = "x" * 4100
+            await pilot.press("enter")
+            self.assertEqual(len(sent[0]["text"]), 300)
+
+    async def test_chat_send_error_is_shown_without_crashing(self):
+        async def send(message):
+            raise ValueError("message is too large")
+
+        app = TrucoApp(send, {"phase": "lobby", "players": ["Ana"]})
+        async with app.run_test() as pilot:
+            await pilot.press("c")
+            app.query_one("#chat-input", Input).value = "hello"
+            await pilot.press("enter")
+            self.assertIn("message is too large", app.history[-1])
+            self.assertTrue(app.is_running)
+
+    async def test_pending_bid_envido_winner_reveal_and_pica_pair_render(self):
+        async def send(message):
+            pass
+
+        app = TrucoApp(send, {"phase": "playing", "players": ["Ana", "Beto"]})
+        async with app.run_test() as pilot:
+            app.apply_event({"type": "state", "view": {
+                "phase": "playing", "players": ["Ana", "Beto"], "cards": [],
+                "pending_bet": ["truco", "Beto"], "duel": ["Ana", "Beto"],
+                "envido": [{"team": 0, "points": 6, "reason": "envido"}],
+                "reveal": ["Ana", [{"rank": 7, "suit": "oro"}]],
+            }})
+            text = app.query_one("#table", Static).render().plain
+            self.assertIn("truco", text)
+            self.assertIn("Beto", text)
+            self.assertIn("Ana", text)
+            self.assertIn("6", text)
+            self.assertIn("oro", text)
 
     async def test_quit_requires_confirmation_and_can_be_canceled(self):
         async def send(message):
@@ -129,13 +215,16 @@ class UiTests(unittest.IsolatedAsyncioTestCase):
             "chat": [],
         }
         app = TrucoApp(send, view)
-        async with app.run_test(size=(50, 18)) as pilot:
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            self.assertGreater(app.query_one("#table").region.width, 0)
+            self.assertGreater(app.query_one("#chat-history").region.width, 0)
             await pilot.press("c")
             app.apply_event({"type": "state", "view": view})
             app.apply_event({"type": "chat", "sender": "[red]Beto", "text": "[bold]" + "x" * 500})
             await pilot.resize_terminal(32, 14)
-            self.assertTrue(app.query_one("#table"))
-            self.assertTrue(app.query_one("#chat-history"))
+            self.assertGreater(app.query_one("#table").region.width, 0)
+            self.assertGreater(app.query_one("#chat-history").region.width, 0)
             self.assertIn(
                 "[bold]",
                 "".join(line.text for line in app.query_one("#chat-history", RichLog).lines),
@@ -170,14 +259,15 @@ class UiTests(unittest.IsolatedAsyncioTestCase):
             patch("truco.__main__.asyncio.open_connection", new=AsyncMock(return_value=(object(), writer))) as connect,
             patch("truco.__main__.write_message", new=AsyncMock()),
             patch("truco.__main__.read_message", new=AsyncMock(return_value={"type": "state", "view": {"players": ["Ana"]}})),
-            patch("truco.__main__.TrucoApp", return_value=app),
+            patch("truco.__main__.TrucoApp", return_value=app) as app_factory,
         ):
             output = io.StringIO()
             with redirect_stdout(output):
-                await _play("Ana", "127.0.0.1", 4977, capacity=2, advertised_address="192.168.1.8")
+                await _play(" Ana ", "127.0.0.1", 4977, capacity=2, advertised_address="192.168.1.8")
         connect.assert_awaited_once_with("127.0.0.1", 4977)
         self.assertIn("Dirección anunciada manualmente: 192.168.1.8:4977", output.getvalue())
         self.assertIn("10.0.0.2:4977", output.getvalue())
+        self.assertEqual(app_factory.call_args.args[1]["local_name"], "Ana")
         with (
             patch("truco.__main__._play", new=AsyncMock()) as play,
             patch("truco.__main__.asyncio.run", side_effect=lambda coroutine: coroutine.close()),

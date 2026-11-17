@@ -15,6 +15,19 @@ def started_room(names=("A", "B"), **kwargs):
 
 
 class RoomTests(unittest.TestCase):
+    def test_host_can_assign_alternating_seat_order_independent_of_join_order(self):
+        for names, order in (
+            (("A", "B", "C", "D"), ("A", "C", "B", "D")),
+            (("A", "B", "C", "D", "E", "F"), ("A", "D", "B", "E", "C", "F")),
+        ):
+            lobby = Room("A", len(names))
+            for name in names[1:]:
+                lobby.join(name)
+            lobby.seat(order)
+            lobby.start()
+            self.assertEqual(lobby.seats, order)
+            self.assertEqual(lobby.match.seats, order)
+
     def test_duplicate_name_or_full_room_rejected(self):
         room = Room("A", 2)
         with self.assertRaises(ValueError):
@@ -29,7 +42,7 @@ class RoomTests(unittest.TestCase):
         self.assertEqual(
             set(views["A"]),
             {"phase", "players", "seats", "score", "mode", "turn", "cards", "table",
-             "legal", "chat", "envido", "reveal", "winner"},
+             "used_slots", "pending_bet", "duel", "legal", "chat", "envido", "reveal", "winner"},
         )
         self.assertEqual(len(views["A"]["cards"]), 3)
         self.assertNotIn(views["B"]["cards"][0], views["A"]["cards"])
@@ -113,6 +126,17 @@ class RoomTests(unittest.TestCase):
         self.assertEqual(set(events), {"A", "C", "D"})
         self.assertTrue(all(event[0]["type"] == "error" for event in events.values()))
         self.assertTrue(all(view["phase"] == "lobby" for view in room.views().values()))
+
+    def test_guest_leave_after_finished_match_preserves_winner_and_room(self):
+        room = started_room()
+        room.match.winner = 0
+        room.chat.append({"type": "chat", "sender": "A", "text": "gg"})
+        room.leave("B")
+        self.assertEqual(room.views()["A"]["phase"], "finished")
+        self.assertEqual(room.views()["A"]["winner"], 0)
+        self.assertEqual(room.views()["A"]["chat"][-1]["text"], "gg")
+        with self.assertRaises(ValueError):
+            room.join("Replacement")
 
     def test_control_chars_and_long_chat_cleaned(self):
         room = started_room()

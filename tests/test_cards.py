@@ -4,6 +4,24 @@ from truco.cards import Card, envido_value, fresh_deck, shuffled_deck, truco_ran
 
 
 class CardTests(unittest.TestCase):
+    def test_all_fourteen_truco_strength_tiers_and_ties(self):
+        tiers = [
+            [Card(1, "espada")], [Card(1, "basto")], [Card(7, "espada")],
+            [Card(7, "oro")], [Card(3, suit) for suit in ("espada", "basto", "oro", "copa")],
+            [Card(2, suit) for suit in ("espada", "basto", "oro", "copa")],
+            [Card(1, suit) for suit in ("oro", "copa")],
+            [Card(12, suit) for suit in ("espada", "basto", "oro", "copa")],
+            [Card(11, suit) for suit in ("espada", "basto", "oro", "copa")],
+            [Card(10, suit) for suit in ("espada", "basto", "oro", "copa")],
+            [Card(7, suit) for suit in ("copa", "basto")],
+            [Card(6, suit) for suit in ("espada", "basto", "oro", "copa")],
+            [Card(5, suit) for suit in ("espada", "basto", "oro", "copa")],
+            [Card(4, suit) for suit in ("espada", "basto", "oro", "copa")],
+        ]
+        ranks = [truco_rank(tier[0]) for tier in tiers]
+        self.assertEqual(ranks, sorted(ranks, reverse=True))
+        self.assertTrue(all(len({truco_rank(card) for card in tier}) == 1 for tier in tiers))
+
     def test_deck_has_40_unique_cards_and_strength_order(self):
         deck = fresh_deck()
 

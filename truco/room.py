@@ -5,6 +5,11 @@ from truco.cards import Card, shuffled_deck
 from truco.match import Match
 from truco.wire import clean_text
 
+SIGNAL_NAMES = (
+    "levantar cejas", "guiñar ojo", "boca a la derecha", "boca a la izquierda",
+    "morder labio inferior", "beso", "abrir boca", "fruncir nariz", "cerrar ojos",
+)
+
 
 class Room:
     def __init__(
@@ -68,6 +73,9 @@ class Room:
                 "turn": match_view.get("turn"),
                 "cards": match_view.get("cards", ()),
                 "table": match_view.get("played", ()),
+                "used_slots": match_view.get("used_slots", ()),
+                "pending_bet": match_view.get("pending_bet"),
+                "duel": match_view.get("duel", ()),
                 "legal": match_view.get("legal", ()),
                 "chat": list(self.chat),
                 "envido": match_view.get("envido", ()),
@@ -145,7 +153,7 @@ class Room:
             if self.rng() < 0.10:
                 leaked = {
                     "type": "chat", "sender": sender,
-                    "text": f"Seña {code}", "signal": code,
+                    "text": f"Seña: {SIGNAL_NAMES[code - 1]}", "signal": code,
                 }
                 self.chat.append(leaked)
                 for player in self.players:
@@ -157,8 +165,10 @@ class Room:
         if name not in self.players:
             return {}
         self.players.remove(name)
-        self.match = None
-        self.seats = None
+        finished = self.match is not None and self.match.winner is not None
+        if not finished:
+            self.match = None
+            self.seats = None
         if name == self.host:
             return {
                 player: [{"type": "error", "text": "host left"}]
