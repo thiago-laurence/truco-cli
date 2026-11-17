@@ -157,9 +157,14 @@ class Room:
         if name not in self.players:
             return {}
         self.players.remove(name)
+        self.match = None
+        self.seats = None
         if name == self.host:
             return {
                 player: [{"type": "error", "text": "host left"}]
                 for player in self.players
             }
-        return {}
+        return {
+            player: [{"type": "error", "text": f"{name} left; match canceled"}]
+            for player in self.players
+        }

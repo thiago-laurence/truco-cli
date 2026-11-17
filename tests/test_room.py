@@ -104,6 +104,16 @@ class RoomTests(unittest.TestCase):
         self.assertEqual(room.views()["A"]["phase"], "finished")
         self.assertEqual(room.dispatch("A", {"type": "start"})["A"][0]["type"], "error")
 
+    def test_leave_during_match_cancels_match_and_returns_remaining_players_to_lobby(self):
+        room = started_room(("A", "B", "C", "D"))
+        events = room.leave("B")
+        self.assertIsNone(room.match)
+        self.assertIsNone(room.seats)
+        self.assertEqual(set(room.players), {"A", "C", "D"})
+        self.assertEqual(set(events), {"A", "C", "D"})
+        self.assertTrue(all(event[0]["type"] == "error" for event in events.values()))
+        self.assertTrue(all(view["phase"] == "lobby" for view in room.views().values()))
+
     def test_control_chars_and_long_chat_cleaned(self):
         room = started_room()
         events = room.dispatch("A", {"type": "chat", "text": "\x1b[31m" + "x" * 400})
