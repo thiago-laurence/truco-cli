@@ -12,6 +12,7 @@ SIGNALS = {
     4: "boca a la izquierda", 5: "morder labio inferior", 6: "beso",
     7: "abrir boca", 8: "fruncir nariz", 9: "cerrar ojos",
 }
+SUIT_SYMBOLS = {"espada": "⚔", "basto": "🌿", "oro": "🪙", "copa": "🍷"}
 
 
 class ConfirmQuit(ModalScreen[bool]):
@@ -119,7 +120,10 @@ class TrucoApp(App[None]):
         )
         table = self.view.get("table", ())
         played = "  ".join(
-            f"{item.get('player')}: {item.get('card')}" for item in table if isinstance(item, dict)
+            f"{item.get('player')}: {item['card'].get('rank')} de "
+            f"{item['card'].get('suit', '').capitalize()} "
+            f"{SUIT_SYMBOLS.get(item['card'].get('suit'), '')}"
+            for item in table if isinstance(item, dict) and isinstance(item.get("card"), dict)
         ) or "—"
         roster = tuple(self.view.get("players", ()))
         if roster != self.roster:

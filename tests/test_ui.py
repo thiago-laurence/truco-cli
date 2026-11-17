@@ -184,6 +184,19 @@ class UiTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("6", text)
             self.assertIn("oro", text)
 
+    async def test_played_card_renders_rank_and_suit_instead_of_json(self):
+        async def send(message):
+            pass
+
+        app = TrucoApp(send, {
+            "phase": "playing", "players": ["Ana", "Beto"],
+            "table": [{"player": "Ana", "card": {"rank": 7, "suit": "basto"}}],
+        })
+        async with app.run_test():
+            text = app.query_one("#table", Static).render().plain
+            self.assertIn("Ana: 7 de Basto 🌿", text)
+            self.assertNotIn("{'rank'", text)
+
     async def test_quit_requires_confirmation_and_can_be_canceled(self):
         async def send(message):
             pass
