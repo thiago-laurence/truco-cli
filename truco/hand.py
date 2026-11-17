@@ -27,6 +27,8 @@ class Hand:
     _done: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self):
+        if len(self.seats) not in (2, 4, 6):
+            raise ValueError("a hand requires 2, 4, or 6 seats")
         self._leader = self.seats[(self.dealer + 1) % len(self.seats)]
         self._turn = self._leader
 

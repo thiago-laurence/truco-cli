@@ -5,6 +5,17 @@ from truco.hand import Award, Hand
 
 
 class HandTests(unittest.TestCase):
+    def test_hand_rejects_invalid_seat_counts(self):
+        for count in (0, 1, 3, 5, 7):
+            with self.subTest(count=count), self.assertRaises(ValueError):
+                Hand(
+                    seats=tuple(str(i) for i in range(count)),
+                    teams={},
+                    dealer=0,
+                    cards={},
+                    score=(0, 0),
+                )
+
     def test_first_parda_then_second_win_awards_one(self):
         hand = Hand(
             seats=("A", "B"),
