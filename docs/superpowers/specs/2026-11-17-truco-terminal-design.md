@@ -1,0 +1,38 @@
+# Truco argentino por terminal — especificación de diseño
+
+## Propósito
+
+Permitir que amigos en una misma red local jueguen una partida completa de Truco Argentino exclusivamente desde terminales Windows y Linux, con chat público permanente y señas privadas que a veces son descubiertas.
+
+## Alcance y referencia
+
+- Una partida humana de 2 (1 contra 1), 4 (2 contra 2) o 6 (3 contra 3) personas. Sin bots, Flor, cuentas, torneos, guardado, reconexión ni acceso por Internet.
+- Referencia normativa: reglamento de la Asociación Argentina de Truco (ASART), [copia archivada](https://web.archive.org/web/20231203065942if_/https://asart.com.ar/wp-content/uploads/reglamento/reglamento-oficial-asart.pdf). La copia no se pudo cotejar directamente; se contrastaron [la explicación de reglas basada en ASART](https://truco.ar/reglas), [el repertorio de señas](https://trucogame.com/pages/senas-del-truco) y [la descripción del reglamento ASART](https://www.lanacion.com.ar/sociedad/locos-por-el-truco-por-impulso-de-un-grupo-de-amigos-llega-la-liga-nacional-nid2341312/). Ante contradicciones no resueltas, no atribuir una decisión particular a ASART sin verificarla.
+- Baraja española de 40 cartas, sin 8, 9 ni comodines; tres cartas únicas por jugador y mano. Objetivo: 30 tantos (15 malas y 15 buenas). Se acaba inmediatamente al llegar o superar 30.
+- De más fuerte a más débil: 1 espada, 1 basto, 7 espada, 7 oro, todos los 3, todos los 2, 1 copa/oro, todos los 12, 11, 10, 7 copa/basto, todos los 6, 5 y 4. Empates de bazas y de envido favorecen al jugador/equipo mano según el orden de juego.
+- Cada mano admite hasta tres bazas, cartas jugadas boca arriba, reparto y mano rotativos. Gana el equipo que se impone en dos bazas; las pardas se resuelven por la primera baza ganada y, si todas empatan, por la mano. Sin canto, vale 1 tanto. Irse al mazo retira solamente al jugador; si ya no queda nadie del equipo, el rival recibe la apuesta de truco aceptada (o 1 sin truco), más 1 por envido no disputado si la primera baza todavía admite envido. Los puntos de un envido ya resuelto se conservan.
+- Envido en primera baza antes de jugar la primera carta propia; se permiten Envido (2), Real Envido (3), Falta Envido y los aumentos legales. Un aumento acepta implícitamente la apuesta anterior; rechazo concede 1 o la suma ya aceptada. Figuras valen 0; dos cartas del mismo palo suman sus valores más 20; si son tres del mismo palo, cuentan las dos más altas; sin pareja, cuenta la carta más alta. En empate gana quien está antes desde la mano. En malas, Falta Envido querida gana la partida; en buenas vale los tantos que le faltan al equipo que va ganando para llegar a 30. En pica-pica vale 6. El envido precede al truco, incluso si se canta al responder a un truco todavía pendiente. Adaptación digital explícita: el servidor calcula el tanto real y anuncia el ganador y sus tantos, sin solicitar declaraciones verbales; al terminar la mano muestra únicamente las cartas que justificaron el envido ganador (o al terminar la partida si el envido la decide). No se simulan faltas físicas de reparto o declaración.
+- Truco (2), Retruco (3), Vale Cuatro (4); se puede aceptar, rechazar o subir legalmente; solo el equipo que aceptó el último canto puede efectuar el aumento siguiente. Rechazar adjudica respectivamente 1, 2 o 3 tantos al desafiante. Los puntos del envido se resuelven antes de los del truco.
+- Seis jugadores: equipos sentados alternadamente, redonda con todos; al alcanzar un equipo 5 tantos, la siguiente mano elegible es pica-pica y se alterna con redonda mientras nadie tenga 25; desde 25, solo redonda. Cada pica-pica consta de tres duelos 1 contra 1 entre rivales enfrentados, jugados uno después del otro; sus puntos se suman al equipo y se comprueba el objetivo de 30 después de cada adjudicación. No se permiten señas durante esos duelos.
+
+## Experiencia en terminal
+
+- Al iniciar, crear sala indicando 2, 4 o 6 plazas, o ingresar nombre, IP local y puerto del anfitrión para unirse. La sala lista participantes y permite al anfitrión asignar equipos/posiciones alternadas; al completarse y confirmarse, comienza la partida. Una sola partida por sala.
+- Pantalla permanente con sala, equipos, marcador, modo de mano, turno/duelo, cartas ya jugadas, las tres posiciones de cartas propias, controles disponibles y chat público con historial desplazable durante toda la sesión. Nunca mostrar cartas privadas ajenas, incluso entre compañeros.
+- `a`, `s`, `d` juegan la carta de la posición original respectiva si es el turno; `e` y `t` abren las opciones legales de Envido y Truco; una apuesta pendiente ofrece aceptar, rechazar o aumentar; `m` permite irse al mazo; `c` abre la escritura del chat (`Enter` envía, `Esc` cancela), `q` solicita confirmación para salir y la ayuda indica controles y señas. Mientras se escribe, las teclas pertenecen al chat y no disparan acciones. `Ctrl+C` conserva su significado habitual.
+- Teclas numéricas: `1` levantar cejas (1 espada), `2` guiñar ojo (1 basto), `3` boca a la derecha (7 espada), `4` boca a la izquierda (7 oro), `5` morder labio inferior (3), `6` beso (2), `7` abrir boca (anchos falsos), `8` fruncir nariz (envido alto), `9` cerrar ojos (mano mala). Se permiten señas falsas; no hay señas en mano a mano ni pica-pica. Fuera del chat pueden enviarse aunque no sea el turno del emisor.
+- Cada seña válida llega a los compañeros y, con probabilidad independiente del 10 % calculada por el anfitrión, también aparece, identificada por emisor y gesto, en el chat general. Sin descubrimiento, los adversarios no reciben ni contenido ni aviso de la seña.
+- El chat sigue visible y utilizable incluso durante pica-pica: no es posible impedir consejos escritos en texto libre. Al terminar, se anuncia el equipo ganador y se mantiene la sala/chat hasta que salgan todos; no se inicia automáticamente otra partida.
+
+## Arquitectura, seguridad y fallos
+
+- Python 3.12 o posterior; Textual para interfaz de terminal multiplataforma; `asyncio` y TCP de la biblioteca estándar para red, sin servidor externo. El cliente envía intenciones; el anfitrión conserva el reparto, valida cada acción/turno y decide resultados. Protocolo de mensajes acotados (longitud y formato), entrada de nombres/chat saneada antes de pintarla en la terminal. Un participante solo recibe vistas públicas y sus propios secretos; el anfitrión necesariamente conoce todas las cartas.
+- Si se desconecta un cliente durante una partida, esta se cancela sin ganador y los presentes regresan a la sala, que puede completarse para volver a iniciar. Si se desconecta el anfitrión, se cierra la sala para todos. Mensajes de error visibles y salida limpia.
+- Red local **de confianza**: no hay autenticación, cifrado, protección ante espionaje de tráfico ni garantías contra un anfitrión malicioso. No exponer el puerto a Internet. La privacidad prometida es la de los mensajes y pantallas de los clientes participantes, no privacidad criptográfica.
+
+## Comprobación de aceptación
+
+- 2, 4 y 6 procesos se conectan por IP local y solo arrancan con sala completa y equipos válidos; cada jugador ve sus cartas y el chat sin bloquear la partida.
+- Pruebas deterministas para reparto, orden de cartas, empates, Envido/Falta, escalada de Truco, mazo, corte a 30 y alternancia/duelos pica-pica.
+- Pruebas de protocolo verifican que no salen cartas de rivales ni señas privadas hacia adversarios; azar controlado prueba las ramas descubierta/oculta y la probabilidad configurada en código de 0,10.
+- Acciones inválidas, desconexiones y mensajes de red malformados no alteran puntaje ni revelan secretos. Prueba manual de teclado, chat y red en Windows y Linux.
