@@ -29,6 +29,7 @@ class Hand:
     _envido_current_points: int = field(default=0, init=False, repr=False)
     _envido_accepted_points: int = field(default=0, init=False, repr=False)
     _envido_last_bidder: str | None = field(default=None, init=False, repr=False)
+    _envido_resume_turn: str | None = field(default=None, init=False, repr=False)
     _envido_resolved: bool = field(default=False, init=False, repr=False)
     _envido_reveal: tuple[str, tuple[Card, ...]] | None = field(default=None, init=False, repr=False)
 
@@ -50,7 +51,11 @@ class Hand:
             if self._envido_pending == "envido":
                 raises = ("bet:real_envido", "bet:falta_envido")
             return ("accept", "reject", *raises)
-        if not self._played and not self._tricks and not self._envido_resolved:
+        if (
+            not self._tricks
+            and not self._envido_resolved
+            and not any(player == actor for player, _ in self._used_slots)
+        ):
             return ("play", "fold", "bet:envido", "bet:real_envido", "bet:falta_envido")
         return ("play", "fold")
 
@@ -81,6 +86,7 @@ class Hand:
             if f"bet:{value}" not in self.legal_for(actor):
                 raise ValueError("invalid envido bet")
             if self._envido_pending is None:
+                self._envido_resume_turn = actor
                 self._envido_pending = value
                 self._envido_current_points = self._envido_stake(value)
             else:
@@ -103,7 +109,8 @@ class Hand:
             self._envido_pending = None
             self._apply_award(award)
             if not self._done:
-                self._advance_turn(actor)
+                self._turn = self._envido_resume_turn
+            self._envido_resume_turn = None
             return (award,)
         if kind == "fold" and value is None:
             if "fold" not in self.legal_for(actor):
@@ -173,10 +180,11 @@ class Hand:
         suits = {}
         for card in cards:
             suits.setdefault(card.suit, []).append(card)
-        pairs = [sorted(group, key=lambda card: card.rank, reverse=True)[:2] for group in suits.values() if len(group) >= 2]
+        value = lambda card: card.rank if card.rank <= 7 else 0
+        pairs = [sorted(group, key=value, reverse=True)[:2] for group in suits.values() if len(group) >= 2]
         if pairs:
-            return tuple(max(pairs, key=lambda pair: sum(card.rank if card.rank <= 7 else 0 for card in pair)))
-        return (max(cards, key=lambda card: card.rank if card.rank <= 7 else 0),)
+            return tuple(max(pairs, key=lambda pair: sum(value(card) for card in pair)))
+        return (max(cards, key=value),)
 
     def _apply_awards(self, awards: list[Award]) -> None:
         for award in awards:

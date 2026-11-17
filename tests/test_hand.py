@@ -57,7 +57,7 @@ class HandTests(unittest.TestCase):
         pica.act("A", "bet", "falta_envido")
         self.assertEqual(pica.act("B", "accept"), (Award(0, 6, "envido"),))
 
-    def test_envido_after_first_card_is_unavailable(self):
+    def test_envido_is_available_after_opponent_card_before_own_card(self):
         hand = Hand(
             ("A", "B"),
             {"A": 0, "B": 1},
@@ -69,9 +69,47 @@ class HandTests(unittest.TestCase):
             (0, 0),
         )
         hand.act("A", "play", "a")
-        self.assertNotIn("bet:envido", hand.legal_for("B"))
-        with self.assertRaises(ValueError):
-            hand.act("B", "bet", "envido")
+        self.assertIn("bet:envido", hand.legal_for("B"))
+        self.assertEqual(hand.act("B", "bet", "envido"), ())
+
+    def test_multiplayer_envido_after_opponent_card_resumes_bidders_turn(self):
+        hand = Hand(
+            ("A", "B", "C", "D"),
+            {"A": 0, "B": 1, "C": 0, "D": 1},
+            3,
+            {
+                "A": (Card(6, "oro"), Card(7, "oro"), Card(3, "copa")),
+                "B": (Card(2, "copa"), Card(4, "copa"), Card(3, "basto")),
+                "C": (Card(5, "copa"), Card(6, "basto"), Card(4, "oro")),
+                "D": (Card(4, "copa"), Card(6, "oro"), Card(3, "basto")),
+            },
+            (0, 0),
+        )
+        hand.act("A", "play", "a")
+        self.assertIn("bet:envido", hand.legal_for("B"))
+
+        hand.act("B", "bet", "envido")
+        self.assertEqual(hand.act("C", "accept"), (Award(0, 2, "envido"),))
+        self.assertEqual(hand.snapshot_for("B")["turn"], "B")
+
+    def test_envido_reveals_cards_by_envido_value_not_raw_rank(self):
+        hand = Hand(
+            ("A", "B"),
+            {"A": 0, "B": 1},
+            1,
+            {
+                "A": (Card(12, "oro"), Card(7, "oro"), Card(3, "oro")),
+                "B": (Card(2, "copa"), Card(4, "copa"), Card(3, "basto")),
+            },
+            (28, 28),
+        )
+        hand.act("A", "bet", "envido")
+        hand.act("B", "accept")
+
+        self.assertEqual(
+            hand.snapshot_for("A")["envido_reveal"],
+            ("A", (Card(7, "oro"), Card(3, "oro"))),
+        )
 
     def test_folding_entire_team_before_envido_adds_one_point(self):
         hand = Hand(
