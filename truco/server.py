@@ -55,6 +55,9 @@ async def serve(room: Room, host: str, port: int) -> asyncio.AbstractServer:
                 local = bool(peer) and ipaddress.ip_address(peer[0]).is_loopback
             except ValueError:
                 local = False
+            if requested != room.host and room.host not in writers:
+                await write_message(writer, {"type": "error", "text": "host must join first"})
+                return
             if requested == room.host:
                 if not local or room.host in writers:
                     await write_message(writer, {"type": "error", "text": "host must join first from loopback"})

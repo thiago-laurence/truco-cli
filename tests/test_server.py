@@ -119,6 +119,21 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("host", rejection["text"])
         self.assertEqual(self.room.players, ["Host"])
 
+    async def test_non_host_must_wait_for_host_then_can_join_room(self):
+        early_reader, _ = await self.connect("Guest")
+        rejection = await self.next_type(early_reader, "error")
+        self.assertIn("host", rejection["text"])
+        self.assertEqual(self.room.players, ["Host"])
+
+        host_reader, _ = await self.connect("Host")
+        host_state = await self.next_type(host_reader, "state")
+        self.assertEqual(host_state["view"]["players"], ["Host"])
+
+        guest_reader, _ = await self.connect("Guest")
+        guest_state = await self.next_type(guest_reader, "state")
+        self.assertEqual(guest_state["view"]["players"], ["Host", "Guest"])
+        self.assertEqual(self.room.players, ["Host", "Guest"])
+
     async def test_malformed_json_disconnects_only_that_client(self):
         bad_reader, bad_writer = await asyncio.open_connection(self.host, self.port)
         self.clients.append((bad_reader, bad_writer))
