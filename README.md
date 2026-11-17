@@ -33,10 +33,11 @@ address to share.
 Start one process on each terminal: two players for a one-on-one game, four
 players for two teams, or six players for a six-player game. The host seats
 the connected players and starts the match from the lobby. Use `a`, `s`, `d`
-to play a card; `e` and `t` to choose among currently legal bets; `m` then
-`1`–`9` for a signal; `c` to type chat (digits remain chat text); `Esc` to
-cancel chat; and `q` to leave. Chat and the table remain visible when the
-terminal is resized.
+to play a card; `e` and `t` to choose among currently legal bets; `m` to fold
+when legal; and `1`–`9` for a signal outside chat. Use `c` to type chat (all
+letters and digits are kept as text), `Esc` to cancel chat, and `q` to open
+the quit confirmation. Chat and the table remain visible when the terminal
+is resized.
 
 ## Network safety
 

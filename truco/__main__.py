@@ -45,7 +45,14 @@ def _ipv4_candidates() -> list[str]:
     return sorted(addresses)
 
 
-async def _play(name: str, address: str, port: int, *, capacity: int | None = None) -> None:
+async def _play(
+    name: str,
+    address: str,
+    port: int,
+    *,
+    capacity: int | None = None,
+    advertised_address: str | None = None,
+) -> None:
     server = None
     if capacity is not None:
         server = await serve(Room(name, capacity), "0.0.0.0", port)
@@ -55,8 +62,8 @@ async def _play(name: str, address: str, port: int, *, capacity: int | None = No
             print(f"  {candidate}:{port}")
         if not candidates:
             print("No se detectó IP IPv4 LAN; indica --address manualmente.")
-        if address:
-            print(f"Dirección anunciada: {address}:{port}")
+        if advertised_address:
+            print(f"Dirección anunciada manualmente: {advertised_address}:{port}")
     try:
         reader, writer = await asyncio.open_connection(address, port)
         await write_message(writer, {"type": "join", "name": name})
@@ -89,7 +96,10 @@ async def _play(name: str, address: str, port: int, *, capacity: int | None = No
 def main(argv: Sequence[str] | None = None) -> None:
     args = parse_args(argv)
     if args.command == "host":
-        asyncio.run(_play(args.name, "127.0.0.1", args.port, capacity=args.players))
+        asyncio.run(_play(
+            args.name, "127.0.0.1", args.port, capacity=args.players,
+            advertised_address=args.address,
+        ))
     else:
         asyncio.run(_play(args.name, args.address, args.port))
 

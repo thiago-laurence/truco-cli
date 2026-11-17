@@ -4,7 +4,30 @@ from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen
 from textual.widgets import Button, Input, RichLog, Static
+
+
+class ConfirmQuit(ModalScreen[bool]):
+    BINDINGS = [Binding("escape", "cancel", "Cancelar")]
+    CSS = """
+    ConfirmQuit { align: center middle; }
+    #quit-dialog { width: 40; height: auto; padding: 1 2; border: round $primary; background: $surface; }
+    #quit-dialog Button { margin: 1 1; }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="quit-dialog"):
+            yield Static("¿Salir de la partida?", markup=False)
+            with Horizontal():
+                yield Button("Salir", id="confirm-quit", variant="error")
+                yield Button("Cancelar", id="cancel-quit")
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "confirm-quit")
 
 
 class TrucoApp(App[None]):
@@ -24,15 +47,15 @@ class TrucoApp(App[None]):
     """
 
     BINDINGS = [
-        Binding("a", "play_a", "Jugar A", priority=True),
-        Binding("s", "play_s", "Jugar S", priority=True),
-        Binding("d", "play_d", "Jugar D", priority=True),
-        Binding("e", "menu_envido", "Envido", priority=True),
-        Binding("t", "menu_truco", "Truco", priority=True),
-        Binding("m", "signal_menu", "Seña", priority=True),
-        Binding("c", "chat_mode", "Chat", priority=True),
-        Binding("escape", "cancel_mode", "Cancelar", priority=True),
-        Binding("q", "quit", "Salir", priority=True),
+        Binding("a", "play_a", "Jugar A"),
+        Binding("s", "play_s", "Jugar S"),
+        Binding("d", "play_d", "Jugar D"),
+        Binding("e", "menu_envido", "Envido"),
+        Binding("t", "menu_truco", "Truco"),
+        Binding("m", "fold", "Mazo"),
+        Binding("c", "chat_mode", "Chat"),
+        Binding("escape", "cancel_mode", "Cancelar"),
+        Binding("q", "quit", "Salir"),
     ]
 
     def __init__(
@@ -101,7 +124,7 @@ class TrucoApp(App[None]):
             f"Tu mano: {hand or '—'}\n{status}"
         )
         legal = set(self.view.get("legal", ()))
-        help_text = "a/s/d jugar · e envido · t truco · m seña · c chat · q salir"
+        help_text = "a/s/d jugar · e envido · t truco · m mazo · 1–9 seña · c chat · q salir"
         if self.chat_mode:
             help_text = "Chat: escribe y pulsa Enter (Esc cancela)"
         elif legal:
@@ -205,9 +228,9 @@ class TrucoApp(App[None]):
         if not self.chat_mode:
             self._open_menu("truco")
 
-    def action_signal_menu(self) -> None:
+    def action_fold(self) -> None:
         if not self.chat_mode:
-            self.query_one("#action-menu", Static).update("Señas: pulsa 1–9")
+            self._action("fold")
 
     def action_chat_mode(self) -> None:
         if self.chat_mode:
@@ -232,7 +255,7 @@ class TrucoApp(App[None]):
 
     def action_quit(self) -> None:
         if not self.chat_mode:
-            self.exit()
+            self.push_screen(ConfirmQuit(), lambda confirmed: self.exit() if confirmed else None)
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         message = event.value.strip()

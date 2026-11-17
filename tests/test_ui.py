@@ -1,8 +1,11 @@
 import unittest
+from contextlib import redirect_stdout
+import io
+from unittest.mock import AsyncMock, Mock, patch
 
 from textual.widgets import Input, RichLog, Static
 
-from truco.__main__ import parse_args
+from truco.__main__ import _play, main, parse_args
 from truco.ui import TrucoApp
 
 
@@ -24,6 +27,75 @@ class UiTests(unittest.IsolatedAsyncioTestCase):
             app.apply_event({"type": "chat", "sender": "Beto", "text": "[bold]literal"})
             log = app.query_one("#chat-history", RichLog)
             self.assertGreater(len(log.lines), 0)
+
+    async def test_chat_input_preserves_shortcut_letters_and_digits_without_actions(self):
+        sent = []
+
+        async def send(message):
+            sent.append(message)
+
+        app = TrucoApp(send, {
+            "phase": "playing", "mode": "redonda", "players": ["Ana", "Beto", "Caro", "Dani"],
+            "turn": "Ana", "legal": ["play", "fold"],
+        })
+        async with app.run_test() as pilot:
+            app.action_chat_mode()
+            with (
+                patch.object(app, "action_play_a", wraps=app.action_play_a) as play_a,
+                patch.object(app, "action_chat_mode", wraps=app.action_chat_mode) as chat,
+                patch.object(app, "action_quit", wraps=app.action_quit) as quit_action,
+            ):
+                await pilot.press("a", "c", "q", "m", "1", "2", "3")
+                self.assertEqual((play_a.call_count, chat.call_count, quit_action.call_count), (0, 0, 0))
+            self.assertFalse(any(binding.priority for binding in app.BINDINGS))
+            self.assertEqual(app.query_one("#chat-input", Input).value, "acqm123")
+            self.assertEqual(sent, [])
+            self.assertTrue(app.is_running)
+
+    async def test_m_sends_fold_only_when_legal(self):
+        sent = []
+
+        async def send(message):
+            sent.append(message)
+
+        app = TrucoApp(send, {"phase": "playing", "legal": ["play", "fold"]})
+        async with app.run_test() as pilot:
+            await pilot.press("m")
+            await pilot.pause()
+            self.assertEqual(sent, [{"type": "action", "kind": "fold", "value": None}])
+
+    async def test_signal_digit_works_outside_chat_and_help_matches(self):
+        sent = []
+
+        async def send(message):
+            sent.append(message)
+
+        app = TrucoApp(send, {
+            "phase": "playing", "mode": "redonda", "players": ["Ana", "Beto", "Caro", "Dani"],
+        })
+        async with app.run_test() as pilot:
+            await pilot.press("1")
+            await pilot.pause()
+            self.assertEqual(sent, [{"type": "signal", "code": 1}])
+            self.assertIn("1–9 seña", app.query_one("#help", Static).render().plain)
+
+    async def test_quit_requires_confirmation_and_can_be_canceled(self):
+        async def send(message):
+            pass
+
+        app = TrucoApp(send, {"phase": "lobby", "players": ["Ana"], "chat": []})
+        async with app.run_test() as pilot:
+            await pilot.press("q")
+            await pilot.pause()
+            self.assertTrue(app.is_running)
+            self.assertNotEqual(app.screen, app.screen_stack[0])
+            await pilot.press("escape")
+            await pilot.pause()
+            self.assertTrue(app.is_running)
+            await pilot.press("q")
+            await pilot.click("#confirm-quit")
+            await pilot.pause()
+            self.assertFalse(app.is_running)
 
     async def test_play_and_bet_keys_send_only_valid_actions(self):
         sent = []
@@ -71,10 +143,14 @@ class UiTests(unittest.IsolatedAsyncioTestCase):
             app.apply_event({"type": "state", "view": {**view, "winner": 1, "phase": "finished"}})
             self.assertIn("Ganó el equipo 2", app.query_one("#table", Static).render().plain)
 
-    def test_cli_host_join_arguments_and_invalid_capacity(self):
+    async def test_cli_host_join_arguments_manual_host_address_and_invalid_capacity(self):
         self.assertEqual(
             vars(parse_args(["host", "--name", "Ana", "--players", "4", "--port", "4977"])),
             {"command": "host", "name": "Ana", "players": 4, "port": 4977, "address": None},
+        )
+        self.assertEqual(
+            parse_args(["host", "--name", "Ana", "--players", "4", "--address", "192.168.1.8"]).address,
+            "192.168.1.8",
         )
         self.assertEqual(
             vars(parse_args(["join", "--name", "Luis", "--host", "192.168.1.8", "--port", "4977"])),
@@ -82,6 +158,35 @@ class UiTests(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaises(SystemExit):
             parse_args(["host", "--name", "Ana", "--players", "3"])
+        server = Mock()
+        server.wait_closed = AsyncMock()
+        writer = Mock()
+        writer.wait_closed = AsyncMock()
+        app = AsyncMock()
+        app.run_async = AsyncMock()
+        with (
+            patch("truco.__main__.serve", new=AsyncMock(return_value=server)),
+            patch("truco.__main__._ipv4_candidates", return_value=["10.0.0.2"]),
+            patch("truco.__main__.asyncio.open_connection", new=AsyncMock(return_value=(object(), writer))) as connect,
+            patch("truco.__main__.write_message", new=AsyncMock()),
+            patch("truco.__main__.read_message", new=AsyncMock(return_value={"type": "state", "view": {"players": ["Ana"]}})),
+            patch("truco.__main__.TrucoApp", return_value=app),
+        ):
+            output = io.StringIO()
+            with redirect_stdout(output):
+                await _play("Ana", "127.0.0.1", 4977, capacity=2, advertised_address="192.168.1.8")
+        connect.assert_awaited_once_with("127.0.0.1", 4977)
+        self.assertIn("Dirección anunciada manualmente: 192.168.1.8:4977", output.getvalue())
+        self.assertIn("10.0.0.2:4977", output.getvalue())
+        with (
+            patch("truco.__main__._play", new=AsyncMock()) as play,
+            patch("truco.__main__.asyncio.run", side_effect=lambda coroutine: coroutine.close()),
+        ):
+            main(["host", "--name", "Ana", "--players", "4", "--port", "4977",
+                  "--address", "192.168.1.8"])
+        play.assert_called_once_with(
+            "Ana", "127.0.0.1", 4977, capacity=4, advertised_address="192.168.1.8"
+        )
 
 
 if __name__ == "__main__":
