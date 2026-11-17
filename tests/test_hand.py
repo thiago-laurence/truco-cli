@@ -5,6 +5,88 @@ from truco.hand import Award, Hand
 
 
 class HandTests(unittest.TestCase):
+    def test_truco_raise_accept_and_reject(self):
+        cards = {
+            "A": (Card(6, "oro"), Card(7, "oro"), Card(3, "copa")),
+            "B": (Card(2, "copa"), Card(4, "copa"), Card(3, "basto")),
+        }
+        rejected_truco = Hand(("A", "B"), {"A": 0, "B": 1}, 1, cards, (0, 0))
+        rejected_truco.act("A", "bet", "truco")
+        self.assertEqual(rejected_truco.act("B", "reject"), (Award(0, 1, "truco"),))
+
+        rejected_retruco = Hand(("A", "B"), {"A": 0, "B": 1}, 1, cards, (0, 0))
+        rejected_retruco.act("A", "bet", "truco")
+        rejected_retruco.act("B", "bet", "retruco")
+        self.assertEqual(rejected_retruco.act("A", "reject"), (Award(1, 2, "truco"),))
+
+        accepted = Hand(("A", "B"), {"A": 0, "B": 1}, 1, cards, (0, 0))
+        accepted.act("A", "bet", "truco")
+        accepted.act("B", "bet", "retruco")
+        accepted.act("A", "bet", "vale_cuatro")
+        accepted.act("B", "accept")
+        for slot in ("a", "s", "d"):
+            actor = accepted.snapshot_for("B")["turn"]
+            accepted.act(actor, "play", slot)
+            accepted.act("A" if actor == "B" else "B", "play", slot)
+        self.assertEqual(accepted.score, (0, 4))
+
+    def test_only_accepting_team_can_raise(self):
+        hand = Hand(
+            ("A", "B", "C", "D"),
+            {"A": 0, "B": 1, "C": 0, "D": 1},
+            3,
+            {
+                "A": (Card(6, "oro"), Card(7, "oro"), Card(3, "copa")),
+                "B": (Card(2, "copa"), Card(4, "copa"), Card(3, "basto")),
+                "C": (Card(5, "copa"), Card(6, "basto"), Card(4, "oro")),
+                "D": (Card(4, "copa"), Card(6, "oro"), Card(3, "basto")),
+            },
+            (0, 0),
+        )
+        hand.act("A", "bet", "truco")
+        self.assertIn("bet:retruco", hand.legal_for("B"))
+        hand.act("B", "accept")
+        hand.act("B", "play", "a")
+        self.assertNotIn("bet:retruco", hand.legal_for("C"))
+
+    def test_envido_precedes_pending_truco(self):
+        hand = Hand(
+            ("A", "B"),
+            {"A": 0, "B": 1},
+            1,
+            {
+                "A": (Card(6, "oro"), Card(7, "oro"), Card(3, "copa")),
+                "B": (Card(2, "copa"), Card(4, "copa"), Card(3, "basto")),
+            },
+            (0, 0),
+        )
+        hand.act("A", "bet", "truco")
+        self.assertIn("bet:envido", hand.legal_for("B"))
+        hand.act("B", "bet", "envido")
+        self.assertEqual(hand.act("A", "accept"), (Award(0, 2, "envido"),))
+        self.assertEqual(hand.snapshot_for("B")["turn"], "B")
+        self.assertIn("bet:retruco", hand.legal_for("B"))
+        hand.act("B", "bet", "retruco")
+        self.assertEqual(hand.legal_for("A")[:2], ("accept", "reject"))
+
+    def test_folding_after_accepted_truco_awards_accepted_stake(self):
+        hand = Hand(
+            ("A", "B"),
+            {"A": 0, "B": 1},
+            1,
+            {
+                "A": (Card(6, "oro"), Card(7, "oro"), Card(3, "copa")),
+                "B": (Card(2, "copa"), Card(4, "copa"), Card(3, "basto")),
+            },
+            (0, 0),
+        )
+        hand.act("A", "bet", "truco")
+        hand.act("B", "accept")
+        self.assertEqual(
+            hand.act("B", "fold"),
+            (Award(0, 2, "truco"), Award(0, 1, "envido")),
+        )
+
     def test_envido_accept_and_tie_go_to_mano(self):
         hand = Hand(
             seats=("A", "B"),
@@ -202,7 +284,7 @@ class HandTests(unittest.TestCase):
             hand.act("B", "play", "s")
 
         self.assertEqual(hand.snapshot_for("B"), before)
-        self.assertEqual(hand.legal_for("A"), ("play", "fold"))
+        self.assertEqual(hand.legal_for("A"), ("play", "fold", "bet:truco"))
 
     def test_snapshot_exposes_only_actor_cards_and_current_legal_actions(self):
         hand = Hand(

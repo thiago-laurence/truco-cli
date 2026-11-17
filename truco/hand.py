@@ -32,6 +32,10 @@ class Hand:
     _envido_resume_turn: str | None = field(default=None, init=False, repr=False)
     _envido_resolved: bool = field(default=False, init=False, repr=False)
     _envido_reveal: tuple[str, tuple[Card, ...]] | None = field(default=None, init=False, repr=False)
+    _truco_pending: str | None = field(default=None, init=False, repr=False)
+    _truco_current_points: int = field(default=0, init=False, repr=False)
+    _truco_accepted_points: int = field(default=1, init=False, repr=False)
+    _truco_last_bidder: str | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self):
         if len(self.seats) not in (2, 4, 6):
@@ -51,13 +55,35 @@ class Hand:
             if self._envido_pending == "envido":
                 raises = ("bet:real_envido", "bet:falta_envido")
             return ("accept", "reject", *raises)
+        envido = self._envido_actions(actor)
+        if self._truco_pending:
+            raises = {
+                "truco": ("bet:retruco",),
+                "retruco": ("bet:vale_cuatro",),
+                "vale_cuatro": (),
+            }[self._truco_pending]
+            return ("accept", "reject", *raises, *envido)
+        truco = ("bet:truco",) if self._truco_accepted_points == 1 else ()
+        if self._truco_accepted_points == 2:
+            truco = ("bet:retruco",)
+        elif self._truco_accepted_points == 3:
+            truco = ("bet:vale_cuatro",)
+        if truco and self._truco_last_bidder and self.teams[actor] == self.teams[self._truco_last_bidder]:
+            truco = ()
+        if not self._tricks and not self._envido_resolved and not any(
+            player == actor for player, _ in self._used_slots
+        ):
+            return ("play", "fold", *envido, *truco)
+        return ("play", "fold", *truco)
+
+    def _envido_actions(self, actor: str) -> tuple[str, ...]:
         if (
             not self._tricks
             and not self._envido_resolved
             and not any(player == actor for player, _ in self._used_slots)
         ):
-            return ("play", "fold", "bet:envido", "bet:real_envido", "bet:falta_envido")
-        return ("play", "fold")
+            return ("bet:envido", "bet:real_envido", "bet:falta_envido")
+        return ()
 
     def snapshot_for(self, actor: str) -> dict[str, object]:
         if actor not in self.cards:
@@ -96,6 +122,32 @@ class Hand:
             self._envido_last_bidder = actor
             self._advance_turn(actor)
             return ()
+        if kind == "bet" and value in ("truco", "retruco", "vale_cuatro"):
+            if f"bet:{value}" not in self.legal_for(actor):
+                raise ValueError("invalid truco bet")
+            self._truco_pending = value
+            self._truco_current_points = {"truco": 2, "retruco": 3, "vale_cuatro": 4}[value]
+            self._truco_last_bidder = actor
+            self._advance_turn(actor)
+            return ()
+        if (
+            kind in ("accept", "reject")
+            and value is None
+            and self._truco_pending
+            and not self._envido_pending
+        ):
+            if kind == "reject":
+                award = Award(
+                    self.teams[self._truco_last_bidder],
+                    self._truco_current_points - 1,
+                    "truco",
+                )
+                self._finish(award)
+                return (award,)
+            self._truco_accepted_points = self._truco_current_points
+            self._truco_pending = None
+            self._truco_current_points = 0
+            return ()
         if kind in ("accept", "reject") and value is None and self._envido_pending:
             if kind == "reject":
                 points = self._envido_accepted_points or 1
@@ -121,7 +173,7 @@ class Hand:
                 winner = next(
                     team for team in self.teams.values() if team != self.teams[actor]
                 )
-                awards = [Award(winner, 1, "truco")]
+                awards = [Award(winner, self._truco_accepted_points, "truco")]
                 if not self._played and not self._tricks and not self._envido_resolved:
                     awards.append(Award(winner, 1, "envido"))
                 self._apply_awards(awards)
@@ -232,7 +284,7 @@ class Hand:
                     (team for team, _ in self._tricks if team is not None), None
                 )
                 team = first_winner if first_winner is not None else self.teams[self._leader]
-            award = Award(team, 1, "truco")
+            award = Award(team, self._truco_accepted_points, "truco")
             self._finish(award)
             return award
 
