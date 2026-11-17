@@ -97,6 +97,28 @@ class MatchTests(unittest.TestCase):
         self.assertEqual(view["duel"], ("B", "E"))
         self.assertNotIn("E", view["cards"])
 
+    def test_waiting_pica_player_does_not_inherit_active_players_used_slots(self):
+        match = Match(("A", "B", "C", "D", "E", "F"), deck_factory=fresh_deck, initial_score=(5, 0))
+        match.act("B", "play", "a")
+
+        view = match.view("A")
+
+        self.assertEqual(view["used_slots"], ())
+
+    def test_pica_used_slots_stay_with_player_across_duels_and_reset_next_mano(self):
+        match = Match(("A", "B", "C", "D", "E", "F"), deck_factory=fresh_deck, initial_score=(5, 0))
+        match.act("B", "play", "a")
+        match.act("E", "fold")
+        match.act("C", "play", "s")
+
+        waiting_view = match.view("B")
+        self.assertEqual(waiting_view["used_slots"], ("a",))
+        self.assertNotEqual(waiting_view["used_slots"], match.view("C")["used_slots"])
+
+        match.act("F", "fold")
+        match.act("D", "fold")
+        self.assertEqual(match.view("B")["used_slots"], ())
+
     def test_pica_dealer_rotates_once_after_all_three_duels(self):
         match = Match(("A", "B", "C", "D", "E", "F"), deck_factory=fresh_deck, initial_score=(5, 0))
         for _ in range(3):

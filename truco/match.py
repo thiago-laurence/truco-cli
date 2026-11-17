@@ -28,6 +28,7 @@ class Match:
         self._duel: tuple[str, ...] = seats
         self._hand: Hand | None = None
         self._pica_cards: dict[str, tuple[Card, Card, Card]] | None = None
+        self._pica_used_slots: dict[str, tuple[str, ...]] = {}
         self._last_table: tuple[dict[str, object], ...] = ()
         self.mode = "redonda"
         if self.winner is None:
@@ -50,6 +51,7 @@ class Match:
                     seat: tuple(deck.pop() for _ in range(3))
                     for seat in self.seats
                 }
+                self._pica_used_slots = {}
             mano = (self._dealer + 1 + self._duel_index) % len(self.seats)
             self._duel = (self.seats[mano], self.seats[(mano + 3) % len(self.seats)])
             teams = {seat: self.seats.index(seat) % 2 for seat in self._duel}
@@ -89,6 +91,11 @@ class Match:
                 self.winner = self.score.index(max(self.score))
                 break
         if self._hand.done:
+            if self.mode == "pica":
+                self._pica_used_slots.update({
+                    seat: self._hand.snapshot_for(seat)["used_slots"]
+                    for seat in self._hand.seats
+                })
             self._last_table = tuple(
                 self._hand.snapshot_for(self._hand.seats[0])["played"]
             )
@@ -124,7 +131,12 @@ class Match:
             view = self._hand.snapshot_for(actor)
         elif self.mode == "pica" and self._pica_cards is not None:
             view = self._hand.snapshot_for(self._hand.seats[0])
-            view.update(actor=actor, cards=self._pica_cards[actor], legal=())
+            view.update(
+                actor=actor,
+                cards=self._pica_cards[actor],
+                used_slots=self._pica_used_slots.get(actor, ()),
+                legal=(),
+            )
         else:
             view = {
                 "actor": actor,
