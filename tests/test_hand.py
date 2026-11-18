@@ -17,6 +17,22 @@ class HandTests(unittest.TestCase):
         self.assertEqual(len(hand.snapshot_for("A")["played"]), 2)
         self.assertEqual(hand.snapshot_for("A")["used_slots"], ("a",))
 
+    def test_played_cards_include_their_trick_and_winning_player(self):
+        hand = Hand(
+            ("A", "B"), {"A": 0, "B": 1}, 1,
+            {"A": (Card(7, "oro"), Card(6, "oro"), Card(3, "copa")),
+             "B": (Card(4, "oro"), Card(5, "copa"), Card(2, "basto"))},
+            (0, 0),
+        )
+        hand.act("A", "play", "a")
+        hand.act("B", "play", "a")
+        hand.act("A", "play", "s")
+        hand.act("B", "play", "s")
+
+        played = hand.snapshot_for("A")["played"]
+        self.assertEqual([card["trick"] for card in played], [0, 0, 1, 1])
+        self.assertEqual({card["trick_winner"] for card in played}, {"A"})
+
     def test_second_envido_raise_has_four_point_acceptance_and_no_third_envido(self):
         hand = Hand(
             ("A", "B"), {"A": 0, "B": 1}, 1,

@@ -214,6 +214,28 @@ class UiTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("S: 2 basto 🌿", text)
             self.assertIn("D: 3 oro 🪙", text)
 
+    async def test_table_groups_played_cards_by_trick_and_marks_winner(self):
+        async def send(message):
+            pass
+
+        app = TrucoApp(send, {
+            "phase": "playing", "players": ["Juan", "Ana"],
+            "table": [
+                {"player": "Juan", "card": {"rank": 1, "suit": "oro"},
+                 "trick": 0, "trick_winner": "Juan"},
+                {"player": "Ana", "card": {"rank": 5, "suit": "basto"},
+                 "trick": 0, "trick_winner": "Juan"},
+                {"player": "Juan", "card": {"rank": 2, "suit": "espada"},
+                 "trick": 1, "trick_winner": "Ana"},
+                {"player": "Ana", "card": {"rank": 3, "suit": "espada"},
+                 "trick": 1, "trick_winner": "Ana"},
+            ],
+        })
+        async with app.run_test():
+            text = app.query_one("#table", Static).render().plain
+            self.assertIn("1era mano: 🏆 Juan: 1 de Oro 🪙 / Ana: 5 de Basto 🌿", text)
+            self.assertIn("2da mano: Juan: 2 de Espada ⚔ / 🏆 Ana: 3 de Espada ⚔", text)
+
     async def test_quit_requires_confirmation_and_can_be_canceled(self):
         async def send(message):
             pass

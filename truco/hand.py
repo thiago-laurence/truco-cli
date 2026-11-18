@@ -21,7 +21,9 @@ class Hand:
     _folded: set[str] = field(default_factory=set, init=False, repr=False)
     _used_slots: set[tuple[str, str]] = field(default_factory=set, init=False, repr=False)
     _played: list[tuple[str, str, Card]] = field(default_factory=list, init=False, repr=False)
-    _public_played: list[tuple[str, str, Card]] = field(default_factory=list, init=False, repr=False)
+    _trick_history: list[tuple[tuple[tuple[str, str, Card], ...], str | None]] = field(
+        default_factory=list, init=False, repr=False
+    )
     _tricks: list[tuple[int | None, str | None]] = field(default_factory=list, init=False, repr=False)
     _leader: str = field(init=False, repr=False)
     _turn: str = field(init=False, repr=False)
@@ -100,8 +102,14 @@ class Hand:
             "pica": self.pica,
             "cards": self.cards[actor],
             "played": tuple(
-                {"player": player, "slot": slot, "card": card}
-                for player, slot, card in (*self._public_played, *self._played)
+                {
+                    "player": player, "slot": slot, "card": card,
+                    "trick": trick, "trick_winner": winner,
+                }
+                for trick, (plays, winner) in enumerate(
+                    (*self._trick_history, (tuple(self._played), None))
+                )
+                for player, slot, card in plays
             ),
             "used_slots": tuple(slot for player, slot in self._used_slots if player == actor),
             "pending_bet": (self._truco_pending or self._envido_pending, self._truco_last_bidder or self._envido_last_bidder),
@@ -296,7 +304,7 @@ class Hand:
             )
             winner_team = self.teams[winner_player]
         self._tricks.append((winner_team, winner_player))
-        self._public_played.extend(self._played)
+        self._trick_history.append((tuple(self._played), winner_player))
         self._played.clear()
 
         counts = [sum(team == i for team, _ in self._tricks) for i in range(2)]

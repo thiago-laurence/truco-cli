@@ -119,12 +119,21 @@ class TrucoApp(App[None]):
             f"{SUIT_SYMBOLS.get(getattr(card, 'suit', card.get('suit') if isinstance(card, dict) else ''), '')}"
             for slot, card in zip("asd", cards)
         )
-        table = self.view.get("table", ())
-        played = "  ".join(
-            f"{item.get('player')}: {item['card'].get('rank')} de "
-            f"{item['card'].get('suit', '').capitalize()} "
-            f"{SUIT_SYMBOLS.get(item['card'].get('suit'), '')}"
-            for item in table if isinstance(item, dict) and isinstance(item.get("card"), dict)
+        tricks = {}
+        for item in self.view.get("table", ()):
+            if isinstance(item, dict) and isinstance(item.get("card"), dict):
+                tricks.setdefault(item.get("trick", 0), []).append(item)
+        ordinals = ("1era", "2da", "3era")
+        played = "\n".join(
+            f"{ordinals[index] if index < len(ordinals) else f'{index + 1}ta'} mano: "
+            + " / ".join(
+                f"{'🏆 ' if card.get('trick_winner') == card.get('player') else ''}"
+                f"{card.get('player')}: {card['card'].get('rank')} de "
+                f"{card['card'].get('suit', '').capitalize()} "
+                f"{SUIT_SYMBOLS.get(card['card'].get('suit'), '')}"
+                for card in cards_in_trick
+            )
+            for index, cards_in_trick in tricks.items()
         ) or "—"
         roster = tuple(self.view.get("players", ()))
         if roster != self.roster:
