@@ -9,6 +9,16 @@ SIGNAL_NAMES = (
     "levantar cejas", "guiñar ojo", "boca a la derecha", "boca a la izquierda",
     "morder labio inferior", "beso", "abrir boca", "fruncir nariz", "cerrar ojos",
 )
+ACTION_ANNOUNCEMENTS = {
+    ("bet", "envido"): "ENVIDO",
+    ("bet", "real_envido"): "REAL ENVIDO",
+    ("bet", "falta_envido"): "FALTA ENVIDO",
+    ("bet", "truco"): "TRUCO",
+    ("bet", "retruco"): "RETRUCO",
+    ("bet", "vale_cuatro"): "VALE CUATRO",
+    ("accept", None): "QUIERO",
+    ("reject", None): "NO QUIERO",
+}
 
 
 class Room:
@@ -123,6 +133,11 @@ class Room:
                 self.match.act(sender, action_kind, value)
             except ValueError as exc:
                 return error(str(exc))
+            announcement = ACTION_ANNOUNCEMENTS.get((action_kind, value))
+            if announcement:
+                event = {"type": "chat", "sender": sender, "text": announcement}
+                self.chat.append(event)
+                return {player: [event.copy()] for player in self.players}
             return {}
         if kind == "chat":
             text = message.get("text")

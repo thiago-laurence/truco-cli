@@ -58,6 +58,49 @@ class RoomTests(unittest.TestCase):
         self.assertEqual(room.views()["A"]["score"], before["A"]["score"])
         self.assertEqual(room.views()["B"]["score"], before["B"]["score"])
 
+    def test_valid_bids_and_responses_are_announced_in_public_chat(self):
+        envido_room = started_room()
+        bidder = envido_room.views()["A"]["turn"]
+        responder = "B" if bidder == "A" else "A"
+        announced = []
+        for actor, kind, value, expected in (
+            (bidder, "bet", "envido", "ENVIDO"),
+            (responder, "bet", "real_envido", "REAL ENVIDO"),
+            (bidder, "bet", "falta_envido", "FALTA ENVIDO"),
+            (responder, "accept", None, "QUIERO"),
+        ):
+            events = envido_room.dispatch(
+                actor, {"type": "action", "kind": kind, "value": value}
+            )
+            announced.append(events[actor][0]["text"])
+            self.assertEqual(events["A"][0]["type"], "chat")
+            self.assertEqual(events["B"][0]["type"], "chat")
+            self.assertEqual(events["A"][0]["sender"], actor)
+            self.assertEqual(events["A"][0]["text"], expected)
+        self.assertEqual(announced, ["ENVIDO", "REAL ENVIDO", "FALTA ENVIDO", "QUIERO"])
+        self.assertEqual(len(envido_room.views()["A"]["chat"]), 4)
+
+        truco_room = started_room()
+        bidder = truco_room.views()["A"]["turn"]
+        responder = "B" if bidder == "A" else "A"
+        labels = []
+        for actor, action, expected in (
+            (bidder, "truco", "TRUCO"),
+            (responder, "retruco", "RETRUCO"),
+            (bidder, "vale_cuatro", "VALE CUATRO"),
+        ):
+            events = truco_room.dispatch(
+                actor, {"type": "action", "kind": "bet", "value": action}
+            )
+            labels.append(events[actor][0]["text"])
+            self.assertEqual(events["A"][0]["text"], expected)
+            self.assertEqual(events["B"][0]["text"], expected)
+            self.assertEqual(events["A"][0]["sender"], actor)
+        self.assertEqual(labels, ["TRUCO", "RETRUCO", "VALE CUATRO"])
+
+        events = truco_room.dispatch(responder, {"type": "action", "kind": "reject"})
+        self.assertEqual(events["A"][0]["text"], "NO QUIERO")
+
     def test_private_signal_only_to_teammates_then_leaks_at_threshold(self):
         for chance, leaks in ((0.10, False), (0.09, True)):
             draws = []
