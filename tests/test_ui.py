@@ -197,6 +197,23 @@ class UiTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("Ana: 7 de Basto 🌿", text)
             self.assertNotIn("{'rank'", text)
 
+    async def test_hand_cards_render_suit_symbols(self):
+        async def send(message):
+            pass
+
+        app = TrucoApp(send, {
+            "phase": "playing", "players": ["Ana", "Beto"],
+            "cards": [
+                {"rank": 1, "suit": "espada"}, {"rank": 2, "suit": "basto"},
+                {"rank": 3, "suit": "oro"},
+            ],
+        })
+        async with app.run_test():
+            text = app.query_one("#table", Static).render().plain
+            self.assertIn("A: 1 espada ⚔", text)
+            self.assertIn("S: 2 basto 🌿", text)
+            self.assertIn("D: 3 oro 🪙", text)
+
     async def test_quit_requires_confirmation_and_can_be_canceled(self):
         async def send(message):
             pass

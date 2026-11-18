@@ -115,7 +115,8 @@ class TrucoApp(App[None]):
         hand = "  ".join(
             f"{slot.upper()}{'✓' if slot in used_slots else ''}: "
             f"{getattr(card, 'rank', card.get('rank') if isinstance(card, dict) else '?')} "
-            f"{getattr(card, 'suit', card.get('suit') if isinstance(card, dict) else '')}"
+            f"{getattr(card, 'suit', card.get('suit') if isinstance(card, dict) else '')} "
+            f"{SUIT_SYMBOLS.get(getattr(card, 'suit', card.get('suit') if isinstance(card, dict) else ''), '')}"
             for slot, card in zip("asd", cards)
         )
         table = self.view.get("table", ())
